@@ -13,6 +13,8 @@ Numpy ndarray characteristics:
 - dtype(): Defines datatype of entries within the ndarray 
 - buffer?
 
+To address:
+
 Extending from pydantic functionality, why doesn't it work currently?
 
 Explain how pydantic functionality will be implemented
@@ -28,3 +30,5 @@ Edge cases/failure modes
 Design choices along the way
 
 What is left? 
+- Verify serialization method for larger numpy arrays
+- Rewrite tests in pytest, following python standards
