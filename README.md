@@ -32,3 +32,4 @@ Design choices along the way
 What is left? 
 - Verify serialization method for larger numpy arrays
 - Rewrite tests in pytest, following python standards
+- Update readme with user guide, summary, and features to be added later
