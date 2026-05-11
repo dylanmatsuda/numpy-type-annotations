@@ -28,5 +28,4 @@ class ShapeBindingModel(BaseModel):
                             bindings[dim_constraint] = value.shape[i]
 
         return self
-        #Check all model fields for their shape constraints\
         

@@ -31,7 +31,6 @@ def _validate_dtype(v: np.ndarray, dtype: np.dtype) -> np.ndarray:
     return v
 
 def _validate_shape(v: np.ndarray, shape: ShapeConstraint) -> np.ndarray:
-    # Check if the number of dimensions matches
     if v.ndim != len(shape):
         raise PydanticCustomError(
             "ndarray_ndim",
@@ -39,71 +38,48 @@ def _validate_shape(v: np.ndarray, shape: ShapeConstraint) -> np.ndarray:
             {"expected": len(shape), "actual": v.ndim},
         )
 
-    # Check each dimension against the corresponding constraint
-        # i.e. for shape=(3, "N", None), check dim 0 == 3, bind dim 1 to "N", accept any size for dim 2
-    for i, (exp, act) in enumerate(zip(shape, v.shape)):
-        if isinstance(exp, int):
-            if act != exp:
+    bindings: dict[str, int] = {}
+    for i, (constraint, actual_size) in enumerate(zip(shape, v.shape)):
+        if constraint is None:
+            continue
+        if isinstance(constraint, int): # Strict dimension handling
+            if actual_size != constraint:
                 raise PydanticCustomError(
                     "ndarray_shape",
                     "Dim {dim}: expected {expected}, got {actual}",
-                    {"dim": i, "expected": exp, "actual": act},
+                    {"dim": i, "expected": constraint, "actual": actual_size},
                 )
-        # If dim in constraint is a str or None, represents a symbolic dimension/no preference. MVP will ignore the dimension for initial validation
+        elif isinstance(constraint, str): # Symbolic dimension handling
+            if constraint in bindings:
+                if actual_size != bindings[constraint]:
+                    raise PydanticCustomError(
+                        "ndarray_shape_symbol",
+                        "Dim {dim}: symbol '{symbol}' bound to {bound}, got {actual}",
+                        {
+                            "dim": i,
+                            "symbol": constraint,
+                            "bound": bindings[constraint],
+                            "actual": actual_size,
+                        },
+                    )
+            else:
+                bindings[constraint] = actual_size
         else:
-            continue
-    
+            raise TypeError(f"Invalid shape constraint at dim {i}: {constraint!r}")
+
+
     return v
-        # None means any size is accepted, so no check needed
-
-
-# def _validate_shape(v: np.ndarray, shape: ShapeConstraint) -> np.ndarray:
-#     if v.ndim != len(shape):
-#         raise PydanticCustomError(
-#             "ndarray_ndim",
-#             "Expected {expected}D array, got {actual}D",
-#             {"expected": len(shape), "actual": v.ndim},
-#         )
-
-#     bindings: dict[str, int] = {}
-#     for i, (actual_size, constraint) in enumerate(zip(v.shape, shape)):
-#         if constraint is None:
-#             continue
-#         if isinstance(constraint, int):
-#             if actual_size != constraint:
-#                 raise PydanticCustomError(
-#                     "ndarray_shape",
-#                     "Dim {dim}: expected {expected}, got {actual}",
-#                     {"dim": i, "expected": constraint, "actual": actual_size},
-#                 )
-#         elif isinstance(constraint, str):
-#             if constraint in bindings:
-#                 if actual_size != bindings[constraint]:
-#                     raise PydanticCustomError(
-#                         "ndarray_shape_symbol",
-#                         "Dim {dim}: symbol '{symbol}' bound to {bound}, got {actual}",
-#                         {
-#                             "dim": i,
-#                             "symbol": constraint,
-#                             "bound": bindings[constraint],
-#                             "actual": actual_size,
-#                         },
-#                     )
-#             else:
-#                 bindings[constraint] = actual_size
-
-#     return v
 
 
 # ---------------------------------------------------------------------------
 # Serializer logic
 # ---------------------------------------------------------------------------
 
-
+# Future implementation: stream serialization in chunks, could use zlib/lz4 compression to reduce byte form size
 def _serialize_ndarray(v: np.ndarray) -> dict:
     return {
         "data": base64.b64encode(v.tobytes()).decode("ascii"),
-        "dtype": v.dtype.name,
+        "dtype": v.dtype.str,  # Use .str to preserve endianness (e.g. '<f8' vs '>f8')
         "shape": list(v.shape),
     }
 
@@ -126,10 +102,9 @@ else:
         Never instantiated directly — used purely as a type hint.
 
         Usage:
-            x: NDArray                     # any array, any dtype/shape
-            x: NDArray[np.float64]        # dtype-constrained
+            x: NDArray                        # any array, any dtype/shape
+            x: NDArray[np.float64]            # dtype-constrained
             x: NDArray[np.float64, (3, "N")]  # dtype + shape-constrained
-            x: NDArray[np.float64, (None, None)]  # dtype-constrained, any 2D shape
         """
 
         _dtype: np.dtype | None = None
@@ -139,12 +114,12 @@ else:
             if not isinstance(params, tuple):
                 params = (params,)
 
-            # Quick sanity check to catch common param structure mistakes like NDArray[np.float64, (3, 3), "extra"]        
-            if isinstance(params, tuple) and len(params) > 2:
+            if len(params) > 2:
                 raise TypeError("NDArray[...] accepts at most 2 parameters: dtype and shape")
 
             dtype: np.dtype | None = None
             shape: ShapeConstraint | None = None
+
             for p in params:
                 if isinstance(p, tuple):
                     shape = p
@@ -152,9 +127,9 @@ else:
                     dtype = np.dtype(p)
 
             return type(
-                f"NDArray[{getattr(dtype, 'name', dtype)}, {shape}]", #New class name
-                (cls,), #Inherit from NDArray
-                {"_dtype": dtype, "_shape": shape}, #Set clas attributes for dtype and shape
+                f"NDArray[{getattr(dtype, 'name', dtype)}, {shape}]",
+                (cls,),
+                {"_dtype": dtype, "_shape": shape},
             )
 
         @classmethod
@@ -195,8 +170,10 @@ else:
                         "Cannot deserialize ndarray: {error}",
                         {"error": str(exc)},
                     ) from exc
-                if dtype is not None and arr.dtype != dtype:
-                    arr = arr.astype(dtype)
+                
+                if dtype is not None:
+                    _validate_dtype(arr, dtype)
+                
                 if shape is not None:
                     _validate_shape(arr, shape)
                 return arr
