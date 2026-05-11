@@ -84,7 +84,7 @@ Arrays serialize to a JSON object with three fields:
 - `dtype` — NumPy `dtype.str` format (e.g. `"<f8"`, `"<f4"`, `"<c16"`). The leading character encodes endianness (`<` little, `>` big, `|` not applicable), ensuring correct deserialization across platforms.
 - `shape` — list of integers.
 
-Dtype validation is strict in both Python and JSON modes — the stored dtype must exactly match the field's declared dtype. There is no implicit casting.
+Dtype validation is strict in both Python and JSON modes so the stored dtype must exactly match the field's declared dtype. There is no implicit casting.
 
 ---
 
@@ -140,7 +140,7 @@ Base64-encoding `tobytes()` output preserves the exact binary representation of 
 Coercive casting between dtypes (e.g. `float32` → `float64`) is lossy in one direction and silently wrong in the other (`complex128` → `float64` discards imaginary parts without error). For scientific data there is no safe general casting rule, so mismatches are always rejected. The producer is responsible for serializing with the correct dtype.
 
 **Why `ShapeBindingModel` as a separate class?**
-Per-field symbolic dims (`("N", "N")`) bind within a single field, so a square matrix constraint doesn't need cross-field awareness. Cross-field binding requires a `model_validator` that runs after all fields are populated — putting this in a separate base class keeps the single-field and multi-field concerns cleanly separated.
+Per-field symbolic dims (`("N", "N")`) bind within a single field, so a square matrix constraint doesn't need cross-field awareness. Cross-field binding requires a `model_validator` that runs after all fields are populated. Putting this in a separate base class keeps the single-field and multi-field concerns cleanly separated.
 
 ---
 
@@ -154,7 +154,7 @@ The intended approach is a `LazyNDArray` companion class backed by [Zarr](https:
 
 - Arrays are stored in a chunked Zarr store (local directory or cloud object storage via `fsspec`)
 - The Pydantic model serializes to a JSON reference `{"store": "<path>", "key": "data", "dtype": ..., "shape": ...}` rather than embedding the binary blob
-- Deserialization returns a `zarr.Array` handle — reads are lazy and chunk-aware, so `arr[0:100]` fetches only the relevant chunks
+- Deserialization returns a `zarr.Array` handle: reads are lazy and chunk-aware, so `arr[0:100]` fetches only the relevant chunks
 - Zarr supports per-chunk compression (Blosc/Zstd), reducing storage footprint significantly
 
 ```python
