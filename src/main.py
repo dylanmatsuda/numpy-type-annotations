@@ -24,6 +24,19 @@ class SquareMatrix(BaseModel):
     matrix: NDArray[np.float64, ("N", "N")]
 
 
+# weights (M, N) and bias (N,) share symbol "N" — must match
+class MatMulPair(ShapeBindingModel):
+    weights: NDArray[np.float64, ("M", "N")]
+    bias: NDArray[np.float64, ("N",)]
+    
+
+# Three fields sharing "N" — all must agree
+class TripleN(ShapeBindingModel):
+    a: NDArray[np.float32, ("N", 2)]
+    b: NDArray[np.float32, ("N", 3)]
+    c: NDArray[np.float32, ("N",)]
+
+
 if __name__ == "__main__":
     import json
 
@@ -104,11 +117,6 @@ if __name__ == "__main__":
 
     # --- ShapeBindingModel: cross-field symbol consistency ---
 
-    # weights (M, N) and bias (N,) share symbol "N" — must match
-    class MatMulPair(ShapeBindingModel):
-        weights: NDArray[np.float64, ("M", "N")]
-        bias: NDArray[np.float64, ("N",)]
-
     # OK: N=4 in both fields
     pair = MatMulPair(
         weights=np.ones((3, 4), dtype=np.float64),
@@ -124,12 +132,6 @@ if __name__ == "__main__":
         )
     except ValidationError as e:
         print("Cross-field err:", e.errors()[0]["msg"])
-
-    # Three fields sharing "N" — all must agree
-    class TripleN(ShapeBindingModel):
-        a: NDArray[np.float32, ("N", 2)]
-        b: NDArray[np.float32, ("N", 3)]
-        c: NDArray[np.float32, ("N",)]
 
     ok3 = TripleN(
         a=np.ones((5, 2), dtype=np.float32),
